@@ -1,6 +1,6 @@
-# Scalable Notification System
+# Distributed Email Infrastructure at Scale
 
-> A production-oriented, microservices-based notification platform for
+> A production-oriented, Distributed Email Infrastructure at Scale with microservices-based notification platform for
 > sending single, bulk, and scheduled emails using RabbitMQ, MongoDB,
 > Redis, and background workers.
 
