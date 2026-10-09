@@ -4,7 +4,8 @@
 > sending single, bulk, and scheduled emails using RabbitMQ, MongoDB,
 > Redis, and background workers.
 
-<img width="1661" height="702" alt="image" src="https://github.com/user-attachments/assets/dc2430b2-819d-4fc5-a734-d3d75c961a17" />
+<img width="1360" height="537" alt="image" src="https://github.com/user-attachments/assets/d5ae7030-2a00-47d9-aad6-11e1046580d7" />
+
 
 
 ## Overview
