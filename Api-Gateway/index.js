@@ -30,10 +30,7 @@ app.use(
   "/api/auth",
   createProxyMiddleware({
     target: process.env.AUTH_SERVICE_URL || "http://localhost:5001",
-    changeOrigin: true,
-    pathRewrite: {
-      "^/api/auth": "/api/auth"
-    }
+    changeOrigin: true
   })
 );
 
@@ -46,12 +43,8 @@ app.use(
   createProxyMiddleware({
     target: process.env.NOTIFICATION_SERVICE_URL || "http://localhost:5002",
     changeOrigin: true,
-    pathRewrite: {
-      "^/api/notifications": "/api/notifications"
-    },
     on: {
       proxyReq: (proxyReq, req) => {
-        // Forward user headers to downstream Notification Service
         if (req.user && req.user.id) {
           proxyReq.setHeader("x-user-id", req.user.id);
         }

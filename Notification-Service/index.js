@@ -11,12 +11,12 @@ const app = express();
 
 app.use(express.json());
 
-// Routes
+// Routes for both gateway-proxied and direct calls
 app.use("/api/notifications", notificationRoutes);
+app.use("/", notificationRoutes);
 
 const PORT = process.env.PORT || 5002;
 
-// Initialize Services & Start Server
 const startServer = async () => {
   await connectDB();
   await connectRabbitMQ();

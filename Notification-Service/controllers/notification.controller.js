@@ -3,6 +3,7 @@ import Notification from "../models/notification.model.js";
 import Campaign from "../models/campaign.model.js";
 import OutboxEvent from "../models/outbox.model.js";
 import Failure from "../models/failure.model.js";
+import { processOutboxEvents } from "../services/outboxPublisher.js";
 
 // Helper function to handle MongoDB transactions with graceful fallback if non-replica set
 const executeTransaction = async (workFn) => {
@@ -19,7 +20,6 @@ const executeTransaction = async (workFn) => {
       await session.abortTransaction();
       session.endSession();
     }
-    // If standalone MongoDB does not support transactions, execute without session
     if (error.message && error.message.includes("Transaction numbers are only allowed on a replica set member")) {
       return await workFn(null);
     }
@@ -36,7 +36,8 @@ export const sendSingleEmail = async (req, res) => {
       return res.status(400).json({ message: "userId, to, from, subject, and body are required." });
     }
 
-    const scheduleDate = scheduledAt ? new Date(scheduledAt) : new Date();
+    // If no scheduledAt specified, set to current time minus 1 sec for instant outbox match
+    const scheduleDate = scheduledAt ? new Date(scheduledAt) : new Date(Date.now() - 1000);
 
     const result = await executeTransaction(async (session) => {
       const opts = session ? { session } : {};
@@ -72,6 +73,9 @@ export const sendSingleEmail = async (req, res) => {
       return { notification, outboxEvent: outboxArray[0] };
     });
 
+    // Instantly trigger outbox processing to push event to RabbitMQ without delay
+    processOutboxEvents().catch((err) => console.error("Outbox instant trigger notice:", err.message));
+
     return res.status(201).json({
       message: "Notification created & outbox event recorded successfully",
       data: result
@@ -91,7 +95,7 @@ export const sendBulkEmails = async (req, res) => {
       return res.status(400).json({ message: "userId, title, and a non-empty recipients array are required." });
     }
 
-    const scheduleDate = scheduledAt ? new Date(scheduledAt) : new Date();
+    const scheduleDate = scheduledAt ? new Date(scheduledAt) : new Date(Date.now() - 1000);
 
     const result = await executeTransaction(async (session) => {
       const opts = session ? { session } : {};
@@ -113,7 +117,6 @@ export const sendBulkEmails = async (req, res) => {
 
       // Prepare Notification & Outbox documents
       const notificationDocs = recipients.map((recipient) => {
-        // Recipient can be string email or object { to, subject, body, from }
         const recipientEmail = typeof recipient === "string" ? recipient : recipient.to;
         const recipientSubject = (typeof recipient === "object" && recipient.subject) ? recipient.subject : subject;
         const recipientBody = (typeof recipient === "object" && recipient.body) ? recipient.body : body;
@@ -148,6 +151,9 @@ export const sendBulkEmails = async (req, res) => {
       };
     });
 
+    // Instantly trigger outbox processing to push events to RabbitMQ without delay
+    processOutboxEvents().catch((err) => console.error("Outbox instant trigger notice:", err.message));
+
     return res.status(201).json({
       message: "Bulk email campaign created successfully with outbox events",
       data: result
@@ -158,14 +164,34 @@ export const sendBulkEmails = async (req, res) => {
   }
 };
 
-// 3. Get All Campaigns for a User
+// 3. Get All Campaigns and Dashboard Stats for a User
 export const getUserCampaigns = async (req, res) => {
   try {
     const { userId } = req.params;
     const campaigns = await Campaign.find({ userId }).sort({ createdAt: -1 });
-    return res.status(200).json({ campaigns });
+
+    // Fetch exact MongoDB document counts for notifications & failures
+    const totalNotifications = await Notification.countDocuments({ userId });
+    const successfulDeliveries = await Notification.countDocuments({
+      userId,
+      status: { $in: ["SUCCESS", "COMPLETED", "PROCESSING", "SCHEDULED"] }
+    });
+    const failedDeliveries = await Notification.countDocuments({
+      userId,
+      status: "FAILED"
+    });
+
+    return res.status(200).json({
+      campaigns,
+      stats: {
+        totalEmailsDispatched: totalNotifications,
+        totalCampaigns: campaigns.length,
+        successfulDeliveries,
+        failedDeliveries
+      }
+    });
   } catch (error) {
-    return res.status(500).json({ message: "Error fetching campaigns", error: error.message });
+    return res.status(500).json({ message: "Error fetching campaigns and stats", error: error.message });
   }
 };
 

@@ -3,7 +3,9 @@ import amqp from "amqplib";
 let connection = null;
 let channel = null;
 
-const QUEUE_NAME = "email_notification_queue";
+const QUEUE_NAME = "notification_outbox_queue";
+const DLX_EXCHANGE = "email_notification_dlx";
+const DLQ_QUEUE = "email_notification_dlq";
 
 export const connectRabbitMQ = async () => {
   try {
@@ -11,8 +13,18 @@ export const connectRabbitMQ = async () => {
     connection = await amqp.connect(rabbitUrl);
     channel = await connection.createChannel();
 
+    // 1. Assert Dead Letter Exchange & DLQ
+    await channel.assertExchange(DLX_EXCHANGE, "direct", { durable: true });
+    await channel.assertQueue(DLQ_QUEUE, { durable: true });
+    await channel.bindQueue(DLQ_QUEUE, DLX_EXCHANGE, DLQ_QUEUE);
+
+    // 2. Assert Main Queue with Dead Letter Arguments
     await channel.assertQueue(QUEUE_NAME, {
-      durable: true
+      durable: true,
+      arguments: {
+        "x-dead-letter-exchange": DLX_EXCHANGE,
+        "x-dead-letter-routing-key": DLQ_QUEUE
+      }
     });
 
     console.log(`RabbitMQ Connected & Queue '${QUEUE_NAME}' Asserted successfully`);

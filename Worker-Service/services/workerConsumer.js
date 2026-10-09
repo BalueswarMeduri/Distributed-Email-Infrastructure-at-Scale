@@ -6,7 +6,7 @@ import Failure from "../models/failure.model.js";
 import { sendEmail } from "./emailService.js";
 import { checkRateLimit } from "../config/redis.js";
 
-const MAIN_QUEUE = "email_notification_queue";
+const MAIN_QUEUE = "notification_outbox_queue";
 const DLX_EXCHANGE = "email_notification_dlx";
 const DLQ_QUEUE = "email_notification_dlq";
 const MAX_RETRIES = 5;
@@ -20,7 +20,8 @@ export const startWorkerConsumer = async () => {
     channel = await connection.createChannel();
 
     // Set prefetch to process messages asynchronously with backpressure
-    await channel.prefetch(10);
+    const prefetchCount = parseInt(process.env.WORKER_PREFETCH || "10", 10);
+    await channel.prefetch(prefetchCount);
 
     // 1. Assert Dead Letter Exchange & DLQ
     await channel.assertExchange(DLX_EXCHANGE, "direct", { durable: true });
@@ -47,7 +48,7 @@ export const startWorkerConsumer = async () => {
         content = JSON.parse(msg.content.toString());
       } catch (err) {
         console.error("Invalid JSON message in queue, sending to DLQ:", err.message);
-        return channel.nack(msg, false, false); // Reject to DLQ
+        return channel.nack(msg, false, false);
       }
 
       const { eventId, notificationId, campaignId } = content;
@@ -75,7 +76,6 @@ export const startWorkerConsumer = async () => {
         const allowed = await checkRateLimit();
         if (!allowed) {
           console.log(`[Worker] Rate limit reached (30 emails/10s). Re-queueing message...`);
-          // Re-queue message after a short 1 second pause
           await new Promise((resolve) => setTimeout(resolve, 1000));
           return channel.nack(msg, false, true);
         }
@@ -89,7 +89,6 @@ export const startWorkerConsumer = async () => {
         }
 
         // --- 4. Attempt Email Sending ---
-        // Extract retry count from headers or default to 1
         const deathHeader = msg.properties.headers["x-death"];
         let retryCount = 1;
         if (deathHeader && deathHeader.length > 0) {
@@ -130,7 +129,6 @@ export const startWorkerConsumer = async () => {
       } catch (error) {
         console.error(`❌ [Worker] Error processing notification ${notificationId}:`, error.message);
 
-        // Check retry count
         const deathHeader = msg.properties.headers["x-death"];
         let retryCount = 1;
         if (deathHeader && deathHeader.length > 0) {
@@ -139,13 +137,10 @@ export const startWorkerConsumer = async () => {
 
         if (retryCount >= MAX_RETRIES) {
           console.error(`🚨 [Worker] Max retries (${MAX_RETRIES}) exhausted for notification ${notificationId}. Moving to DLQ.`);
-          // Reject without requeue -> sends to DLQ
           channel.nack(msg, false, false);
         } else {
           console.warn(`⚠️ [Worker] Retrying notification ${notificationId} (Attempt ${retryCount + 1}/${MAX_RETRIES})...`);
-          // Delay retry by 2 seconds
           await new Promise((resolve) => setTimeout(resolve, 2000));
-          // Requeue message
           channel.nack(msg, false, true);
         }
       }
