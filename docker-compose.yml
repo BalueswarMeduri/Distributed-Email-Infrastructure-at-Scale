@@ -1,0 +1,118 @@
+services:
+  # Infrastructure: Redis Cache & Rate Limiter
+  redis:
+    image: redis:7-alpine
+    container_name: notification_redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # Infrastructure: RabbitMQ Message Broker & DLQ
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: notification_rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Microservice 1: Auth Service
+  auth-service:
+    build:
+      context: ./Auth-Service
+      dockerfile: Dockerfile
+    container_name: notification_auth_service
+    ports:
+      - "5001:5001"
+    environment:
+      - PORT=5001
+      - MONGODB=${MONGODB:-mongodb+srv://balumeduri6_db_user:agAa7gSWogXG1IEW@cluster0.klqofsp.mongodb.net/}
+      - JWT_SECRET=${JWT_SECRET:-supersecretjwtkey_123456789_notification_app}
+      - REFRESH_TOKEN_SECRET=${REFRESH_TOKEN_SECRET:-supersecretrefreshkey_987654321_notification_app}
+    restart: always
+
+  # Microservice 2: Notification Service (Transactional Outbox Publisher)
+  notification-service:
+    build:
+      context: ./Notification-Service
+      dockerfile: Dockerfile
+    container_name: notification_service
+    ports:
+      - "5002:5002"
+    environment:
+      - PORT=5002
+      - MONGODB=${MONGODB:-mongodb+srv://balumeduri6_db_user:agAa7gSWogXG1IEW@cluster0.klqofsp.mongodb.net/}
+      - RABBITMQ_URL=amqp://rabbitmq:5672
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    restart: always
+
+  # Microservice 3: Worker Service (Consumer, Idempotency & Nodemailer SMTP)
+  worker-service:
+    build:
+      context: ./Worker-Service
+      dockerfile: Dockerfile
+    container_name: notification_worker_service
+    ports:
+      - "5003:5003"
+    environment:
+      - PORT=5003
+      - MONGODB=${MONGODB:-mongodb+srv://balumeduri6_db_user:agAa7gSWogXG1IEW@cluster0.klqofsp.mongodb.net/}
+      - RABBITMQ_URL=amqp://rabbitmq:5672
+      - REDIS_URL=redis://redis:6379
+      - SMTP_HOST=smtp.ethereal.email
+      - SMTP_PORT=587
+      - SMTP_USER=jamel27@ethereal.email
+      - SMTP_PASS=Ex8Qmb2EtvxkDna5Z1
+      - WORKER_PREFETCH=10
+      - RATE_LIMIT_MAX_MSGS=30
+      - RATE_LIMIT_WINDOW_SEC=10
+    depends_on:
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: always
+
+  # Microservice 4: API Gateway (Sliding Window Rate Limiter & Reverse Proxy)
+  api-gateway:
+    build:
+      context: ./Api-Gateway
+      dockerfile: Dockerfile
+    container_name: notification_api_gateway
+    ports:
+      - "5000:5000"
+    environment:
+      - PORT=5000
+      - REDIS_URL=redis://redis:6379
+      - AUTH_SERVICE_URL=http://auth-service:5001
+      - NOTIFICATION_SERVICE_URL=http://notification-service:5002
+      - WORKER_SERVICE_URL=http://worker-service:5003
+      - JWT_SECRET=${JWT_SECRET:-supersecretjwtkey_123456789_notification_app}
+    depends_on:
+      - auth-service
+      - notification-service
+      - worker-service
+      - redis
+    restart: always
+
+  # Frontend Web Client (Nginx Static Asset Server)
+  frontend:
+    build:
+      context: ./Frontend
+      dockerfile: Dockerfile
+    container_name: notification_frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      - api-gateway
+    restart: always
