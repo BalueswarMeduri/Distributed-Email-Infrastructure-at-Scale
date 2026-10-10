@@ -1,15 +1,28 @@
 import express from "express";
 import dotenv from "dotenv";
+import client from "@prometheus-io/client";
 import connectDB from "./config/Db.js";
 import initRedis from "./config/redis.js";
 import { initEmailTransporter } from "./services/emailService.js";
 import { startWorkerConsumer } from "./services/workerConsumer.js";
 import { startDLQMonitor } from "./services/dlqMonitor.js";
+import logger from "./utils/logger.js";
 
 dotenv.config();
 
 const app = express();
 app.use(express.json());
+
+// Initialize Prometheus Default Metrics
+const collectDefaultMetrics = client.collectDefaultMetrics;
+collectDefaultMetrics({ register: client.register });
+
+// Prometheus Metrics Endpoint
+app.get("/metrics", async (req, res) => {
+  res.setHeader("Content-Type", client.register.contentType);
+  const metrics = await client.register.metrics();
+  return res.end(metrics);
+});
 
 // Health Check Endpoint
 app.get("/health", (req, res) => {

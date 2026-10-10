@@ -230,11 +230,10 @@ const Home = () => {
                       <button
                         key={tab}
                         onClick={() => setActiveTab(tab)}
-                        className={`font-['JetBrains_Mono',monospace] text-xs pb-0.5 capitalize transition-colors ${
-                          activeTab === tab
+                        className={`font-['JetBrains_Mono',monospace] text-xs pb-0.5 capitalize transition-colors ${activeTab === tab
                             ? 'font-semibold text-primary border-b-2 border-primary'
                             : 'text-on-surface-variant hover:text-primary'
-                        }`}
+                          }`}
                       >
                         {tab === 'curl' ? 'cURL Request' : tab === 'payload' ? 'JSON Envelope' : 'Cluster Receipt'}
                       </button>
@@ -315,7 +314,7 @@ const Home = () => {
           >
             <div className="bg-surface-container-lowest rounded-xl shadow-md p-space-md grid grid-cols-2 md:grid-cols-4 gap-gutter border border-outline-variant/30">
               {[
-                { label: 'Peak Throughput', value: '120k', unit: '/sec', valueColor: 'text-primary' },
+                { label: 'Peak Throughput', value: '6k', unit: '/sec', valueColor: 'text-primary' },
                 { label: 'Delivery SLA', value: '99.99%', unit: '', valueColor: 'text-primary' },
                 { label: 'Packet Loss', value: '0.00%', unit: '', valueColor: 'text-secondary' },
                 { label: 'Ingestion Latency', value: '< 4ms', unit: '', valueColor: 'text-primary' }

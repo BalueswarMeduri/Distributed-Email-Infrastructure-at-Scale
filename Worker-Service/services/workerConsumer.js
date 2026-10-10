@@ -5,6 +5,7 @@ import IdempotencyRecord from "../models/idempotency.model.js";
 import Failure from "../models/failure.model.js";
 import { sendEmail } from "./emailService.js";
 import { checkRateLimit } from "../config/redis.js";
+import logger from "../utils/logger.js";
 
 const MAIN_QUEUE = "notification_outbox_queue";
 const DLX_EXCHANGE = "email_notification_dlx";
@@ -123,10 +124,23 @@ export const startWorkerConsumer = async () => {
           }
         }
 
+        logger.info(`Successfully processed notification ${notificationId}`, {
+          eventId,
+          notificationId,
+          campaignId: campaignId || null,
+          recipient: notification.to,
+          status: "SUCCESS"
+        });
         console.log(`✅ [Worker] Successfully processed notification ${notificationId}`);
         channel.ack(msg);
 
       } catch (error) {
+        logger.error(`Error processing notification ${notificationId}: ${error.message}`, {
+          eventId,
+          notificationId,
+          campaignId: campaignId || null,
+          error: error.message
+        });
         console.error(`❌ [Worker] Error processing notification ${notificationId}:`, error.message);
 
         const deathHeader = msg.properties.headers["x-death"];

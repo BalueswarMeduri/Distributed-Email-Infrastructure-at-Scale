@@ -5,7 +5,8 @@ export const verifyAuth = (req, res, next) => {
   const publicPaths = [
     "/api/auth/login",
     "/api/auth/register",
-    "/health"
+    "/health",
+    "/metrics"
   ];
 
   if (publicPaths.some((path) => req.path.startsWith(path))) {
